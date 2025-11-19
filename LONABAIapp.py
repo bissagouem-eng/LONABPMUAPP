@@ -2,9 +2,9 @@
 # Generated from Colab Training - Accuracy: 93.13%
 
 import streamlit as st
-import polars as pl
-from datetime import datetime, timedelta
 import pandas as pd
+import duckdb
+from datetime import datetime, timedelta
 import json
 import random
 from itertools import combinations, permutations
@@ -16,24 +16,48 @@ class LONABAI:
     def __init__(self):
         self.analytics = None
         self.df = None
+        self.conn = duckdb.connect()  # DuckDB for fast operations
 
     def load_analytics(self):
-        """Load pre-computed analytics from embedded JSON string"""
-        embedded_data_str = '{"df_json": "[{\\"horse_number\\":1,\\"horse_name\\":\\"Horse_0_1\\",\\"jockey\\":\\"S. PASQUIER\\",\\"trainer\\":\\"Trainer_4\\",\\"win\\":0,\\"position\\":5,\\"date\\":\\"2025-11-19\\",\\"race_type\\":\\"Quint\u00e9+\\",\\"course\\":\\"CHANTILLY\\",\\"distance\\":\\"2000m\\",\\"prize_money\\":\\"92000\\",\\"is_favorite\\":1,\\"has_experience\\":1,\\"weekday\\":2,\\"month\\":11},{\\"horse_number\\":2,\\"horse_name\\":\\"Horse_0_2\\",\\"jockey\\":\\"M. BARZALONA\\",\\"trainer\\":\\"Trainer_3\\",\\"win\\":1,\\"position\\":1,\\"date\\":\\"2025-11-19\\",\\"race_type\\":\\"Quint\u00e9+\\",\\"course\\":\\"CHANTILLY\\",\\"distance\\":\\"2000m\\",\\"prize_money\\":\\"97000\\",\\"is_favorite\\":1,\\"has_experience\\":1,\\"weekday\\":2,\\"month\\":11},{\\"horse_number\\":3,\\"horse_name\\":\\"Horse_0_3\\",\\"jockey\\":\\"C. SOUMILLON\\",\\"trainer\\":\\"Trainer_5\\",\\"win\\":0,\\"position\\":9,\\"date\\":\\"2025-11-19\\",\\"race_type\\":\\"Quint\u00e9+\\",\\"course\\":\\"CHANTILLY\\",\\"distance\\":\\"1600m\\",\\"prize_money\\":\\"50000\\",\\"is_favorite\\":1,\\"has_experience\\":1,\\"weekday\\":2,\\"month\\":11}]"}'
-        
+        """Load pre-computed analytics from embedded data"""
         try:
-            # Parse the embedded data
-            data_dict = json.loads(embedded_data_str)
-            df_json_str = data_dict["df_json"]
-            records = json.loads(df_json_str)
+            # Direct data creation - most reliable approach
+            sample_data = [
+                {
+                    "horse_number": 1, "horse_name": "Horse_0_1", "jockey": "S. PASQUIER", 
+                    "trainer": "Trainer_4", "win": 0, "position": 5, "date": "2025-11-19",
+                    "race_type": "Quinté+", "course": "CHANTILLY", "distance": "2000m",
+                    "prize_money": "92000", "is_favorite": 1, "has_experience": 1,
+                    "weekday": 2, "month": 11
+                },
+                {
+                    "horse_number": 2, "horse_name": "Horse_0_2", "jockey": "M. BARZALONA",
+                    "trainer": "Trainer_3", "win": 1, "position": 1, "date": "2025-11-19",
+                    "race_type": "Quinté+", "course": "CHANTILLY", "distance": "2000m",
+                    "prize_money": "97000", "is_favorite": 1, "has_experience": 1,
+                    "weekday": 2, "month": 11
+                },
+                {
+                    "horse_number": 3, "horse_name": "Horse_0_3", "jockey": "C. SOUMILLON",
+                    "trainer": "Trainer_5", "win": 0, "position": 9, "date": "2025-11-19",
+                    "race_type": "Quinté+", "course": "CHANTILLY", "distance": "1600m",
+                    "prize_money": "50000", "is_favorite": 1, "has_experience": 1,
+                    "weekday": 2, "month": 11
+                }
+            ]
             
             # Convert to DataFrame
-            self.df = pl.DataFrame(records)
+            self.df = pd.DataFrame(sample_data)
+            st.success(f"✅ Loaded {len(self.df)} race records using DuckDB-powered engine")
             return True
             
         except Exception as e:
             st.error(f"❌ Error loading analytics: {str(e)}")
             return False
+
+    def fast_query(self, query):
+        """Execute fast SQL queries using DuckDB"""
+        return self.conn.execute(query).df()
 
     def display_race_analytics(self):
         """Display race analytics in a user-friendly format"""
@@ -43,32 +67,45 @@ class LONABAI:
             
         st.header("🏇 Race Analytics Dashboard")
         
-        # Convert to pandas for Streamlit display
-        display_df = self.df.to_pandas()
-            
+        # Use DuckDB for fast aggregations
+        metrics_query = """
+        SELECT 
+            COUNT(*) as total_horses,
+            SUM(win) as total_winners,
+            SUM(is_favorite) as total_favorites,
+            AVG(CAST(prize_money AS DOUBLE)) as avg_prize
+        FROM self.df
+        """
+        metrics = self.fast_query(metrics_query).iloc[0]
+        
         # Key metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Horses", len(display_df))
+            st.metric("Total Horses", int(metrics['total_horses']))
         with col2:
-            st.metric("Winners", display_df['win'].sum())
+            st.metric("Winners", int(metrics['total_winners']))
         with col3:
-            st.metric("Favorites", display_df['is_favorite'].sum())
+            st.metric("Favorites", int(metrics['total_favorites']))
         with col4:
-            avg_prize = display_df['prize_money'].astype(float).mean()
-            st.metric("Avg Prize Money", f"€{avg_prize:,.0f}")
+            st.metric("Avg Prize Money", f"€{metrics['avg_prize']:,.0f}")
         
         # Data table
         st.subheader("📊 Race Data")
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(self.df, use_container_width=True)
         
-        # Jockey performance
+        # Jockey performance (using DuckDB for speed)
         st.subheader("🏆 Jockey Performance")
-        jockey_stats = display_df.groupby('jockey').agg({
-            'win': 'sum',
-            'position': 'mean',
-            'horse_number': 'count'
-        }).rename(columns={'horse_number': 'races'})
+        jockey_query = """
+        SELECT 
+            jockey,
+            SUM(win) as wins,
+            AVG(position) as avg_position,
+            COUNT(*) as races
+        FROM self.df
+        GROUP BY jockey
+        ORDER BY wins DESC
+        """
+        jockey_stats = self.fast_query(jockey_query)
         st.dataframe(jockey_stats, use_container_width=True)
 
 def main():
@@ -117,7 +154,7 @@ def main():
     with st.sidebar:
         st.header("🔧 Controls")
         
-        # FILE UPLOAD FEATURE - NEW
+        # FILE UPLOAD FEATURE
         st.subheader("📁 Upload Daily Feed")
         uploaded_file = st.file_uploader(
             "Drag and drop your daily data file", 
@@ -138,7 +175,7 @@ def main():
             except Exception as e:
                 st.error(f"❌ Error loading file: {str(e)}")
         
-        # EXISTING LOAD DATA BUTTON
+        # LOAD DATA BUTTON
         if st.button("🔄 Load Race Data", type="primary"):
             with st.spinner("Loading analytics..."):
                 if st.session_state.ai_system.load_analytics():
@@ -151,11 +188,12 @@ def main():
         - Real-time predictions
         - 93.13% accuracy rate
         - Multi-factor analysis
+        - Powered by DuckDB (High Performance)
         """)
     
     # Main content
     if st.session_state.ai_system.df is not None:
-        # EXISTING ANALYTICS DISPLAY
+        # ANALYTICS DISPLAY
         st.session_state.ai_system.display_race_analytics()
         
         # NEW FEATURES SECTION
@@ -166,20 +204,23 @@ def main():
         if st.button("🚀 Generate Winning Predictions", key="win_btn"):
             if st.session_state.ai_system.df is not None:
                 try:
-                    df = st.session_state.ai_system.df.to_pandas()
-                    
-                    # AI Prediction Logic
-                    df['ai_score'] = (
-                        df['win'] * 0.3 + 
-                        (1 / df['position']) * 0.25 +
-                        df['is_favorite'] * 0.2 +
-                        df['has_experience'] * 0.15 +
-                        (df['prize_money'].astype(float) / df['prize_money'].astype(float).max()) * 0.1
-                    )
-                    
-                    # Top predicted winners
-                    top_picks = df.nlargest(5, 'ai_score')[['horse_number', 'horse_name', 'jockey', 'ai_score']]
-                    top_picks['ai_score'] = (top_picks['ai_score'] * 100).round(2)
+                    # AI Prediction Logic with DuckDB
+                    query = """
+                    SELECT 
+                        horse_number,
+                        horse_name,
+                        jockey,
+                        (win * 0.3 + 
+                         (1.0 / position) * 0.25 +
+                         is_favorite * 0.2 +
+                         has_experience * 0.15 +
+                         (CAST(prize_money AS DOUBLE) / (SELECT MAX(CAST(prize_money AS DOUBLE)) FROM self.df)) * 0.1) * 100 as ai_score
+                    FROM self.df
+                    ORDER BY ai_score DESC
+                    LIMIT 5
+                    """
+                    top_picks = st.session_state.ai_system.fast_query(query)
+                    top_picks['ai_score'] = top_picks['ai_score'].round(2)
                     
                     col1, col2 = st.columns([2, 1])
                     
@@ -201,7 +242,7 @@ def main():
                         st.subheader("📊 Confidence Scores")
                         for idx, row in top_picks.iterrows():
                             st.metric(
-                                f"#{row['horse_number']} {row['horse_name']}",
+                                f"#{int(row['horse_number'])} {row['horse_name']}",
                                 f"Score: {row['ai_score']}%"
                             )
                             
@@ -213,26 +254,26 @@ def main():
             if st.session_state.ai_system.df is not None:
                 try:
                     with st.spinner("🧠 Generating 50 AI-powered combinations..."):
-                        df = st.session_state.ai_system.df.to_pandas()
+                        df = st.session_state.ai_system.df
                         horse_numbers = df['horse_number'].tolist()
                         all_combinations = []
                         
-                        # Multiple strategies
-                        df['ai_score'] = (
-                            df['win'] * 0.3 + 
-                            (1 / df['position']) * 0.25 +
-                            df['is_favorite'] * 0.2 +
-                            df['has_experience'] * 0.15 +
-                            (df['prize_money'].astype(float) / df['prize_money'].astype(float).max()) * 0.1
-                        )
+                        # Multiple strategies using DuckDB
+                        strategies_data = st.session_state.ai_system.fast_query("""
+                            SELECT 
+                                horse_number,
+                                (win * 0.3 + (1.0 / position) * 0.25 + is_favorite * 0.2 + has_experience * 0.15) as score
+                            FROM self.df
+                            ORDER BY score DESC
+                            LIMIT 8
+                        """)
                         
-                        strategies = [
-                            df.nlargest(8, 'ai_score')['horse_number'].tolist(),
-                            df[df['win'] == 1]['horse_number'].tolist(),
-                            df[df['is_favorite'] == 1]['horse_number'].tolist(),
-                            df[df['has_experience'] == 1]['horse_number'].tolist(),
-                            horse_numbers
-                        ]
+                        top_horses = strategies_data['horse_number'].tolist()
+                        recent_winners = df[df['win'] == 1]['horse_number'].tolist()
+                        favorites = df[df['is_favorite'] == 1]['horse_number'].tolist()
+                        experienced = df[df['has_experience'] == 1]['horse_number'].tolist()
+                        
+                        strategies = [top_horses, recent_winners, favorites, experienced, horse_numbers]
                         
                         combination_id = 1
                         for strategy in strategies:
@@ -245,7 +286,6 @@ def main():
                                     if combination_id > 50:
                                         break
                                     
-                                    # Add permutations
                                     perms = list(permutations(comb, 5))
                                     if len(perms) > 2:
                                         perms = random.sample(perms, 2)
@@ -301,13 +341,12 @@ def main():
                 except Exception as e:
                     st.error(f"Combination generation error: {str(e)}")
         
-        # EXISTING PERFORMANCE INSIGHTS
+        # PERFORMANCE INSIGHTS
         st.markdown("---")
         col1, col2 = st.columns(2)
         
         with col1:
             st.subheader("📈 Performance Insights")
-            df = st.session_state.ai_system.df.to_pandas()
             win_rate = (df['win'].sum() / len(df)) * 100
             avg_position = df['position'].mean()
                 
@@ -317,13 +356,12 @@ def main():
         with col2:
             st.subheader("⚡ Quick Actions")
             if st.button("Generate Quick Pick", key="quick_btn"):
-                df = st.session_state.ai_system.df.to_pandas()
                 horses = df['horse_number'].tolist()
                 quick_pick = random.sample(horses, min(5, len(horses)))
                 st.success(f"🎯 Quick Pick: {', '.join(map(str, quick_pick))}")
             
     else:
-        # EXISTING WELCOME SCREEN
+        # WELCOME SCREEN
         st.info("👈 Click 'Load Race Data' in the sidebar to begin analysis")
         
         st.markdown("---")
