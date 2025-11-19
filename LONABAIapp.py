@@ -1,5 +1,5 @@
-# 🏆 TROPHY QUANTUM LONAB AI v20 - PRODUCTION READY
-# Enhanced PDF Parser + Fixed Dashboard
+# 🏆 TROPHY QUANTUM LONAB AI v20 - CRITICAL BUG FIX
+# Fixed PDF Parser + Zero Horse Number Prevention
 
 import streamlit as st
 import pandas as pd
@@ -37,13 +37,22 @@ class EnhancedPDFAnalyzer:
             # Enhanced parsing for Structure 1 format
             self._parse_enhanced_racing_data()
             
-            # Validate results
+            # Validate results - CRITICAL FIX: Better validation
             if not self.results['horse_data']:
+                st.warning("⚠️ Enhanced parser found no horses, trying fallback...")
                 self._fallback_parsing()
             
-            st.success(f"✅ Found {len(self.results['horse_data'])} horses with enhanced parser")
-            return self.results
+            # FINAL VALIDATION: Ensure we have valid horse data
+            valid_horses = [h for h in self.results['horse_data'] if h.get('horse_number', 0) > 0]
+            self.results['horse_data'] = valid_horses
             
+            if valid_horses:
+                st.success(f"✅ Found {len(valid_horses)} valid horses with enhanced parser")
+                return self.results
+            else:
+                st.error("❌ No valid horses found after all parsing attempts")
+                return self.results
+                
         except Exception as e:
             st.error(f"PDF analysis error: {str(e)}")
             return self._fallback_parsing()
@@ -71,8 +80,16 @@ class EnhancedPDFAnalyzer:
                 horse_num = horse_match.group(1)
                 horse_name = horse_match.group(2).strip()
                 
+                # CRITICAL: Validate horse number is positive integer
+                try:
+                    horse_num_int = int(horse_num)
+                    if horse_num_int <= 0:
+                        continue  # Skip invalid horse numbers
+                except ValueError:
+                    continue  # Skip non-integer horse numbers
+                
                 current_horse = {
-                    'horse_number': int(horse_num),
+                    'horse_number': horse_num_int,
                     'horse_name': horse_name,
                     'analysis': '',
                     'jockey': 'Unknown',
@@ -212,6 +229,10 @@ class EnhancedPDFAnalyzer:
     
     def _finalize_horse_data(self, horse):
         """Final processing before adding horse to results"""
+        # CRITICAL: Ensure horse number is valid
+        if not horse.get('horse_number') or horse['horse_number'] <= 0:
+            return  # Skip invalid horses
+        
         # Ensure required fields
         if not horse.get('position'):
             # Estimate position based on analysis keywords
@@ -241,19 +262,26 @@ class EnhancedPDFAnalyzer:
                     horse_num = simple_match.group(1)
                     horse_name = simple_match.group(2).split('.')[0].split('-')[0].strip()
                     
-                    if len(horse_name) > 2:  # Valid name check
-                        horse = {
-                            'horse_number': int(horse_num),
-                            'horse_name': horse_name,
-                            'analysis': line,
-                            'jockey': 'Unknown',
-                            'trainer': 'Unknown',
-                            'win': 0,
-                            'position': random.randint(1, 12),
-                            'is_favorite': 0,
-                            'has_experience': 1
-                        }
-                        self.results['horse_data'].append(horse)
+                    # CRITICAL: Validate horse number
+                    try:
+                        horse_num_int = int(horse_num)
+                        if horse_num_int <= 0 or len(horse_name) < 2:
+                            continue  # Skip invalid entries
+                    except ValueError:
+                        continue  # Skip non-integer numbers
+                    
+                    horse = {
+                        'horse_number': horse_num_int,
+                        'horse_name': horse_name,
+                        'analysis': line,
+                        'jockey': 'Unknown',
+                        'trainer': 'Unknown',
+                        'win': 0,
+                        'position': random.randint(1, 12),
+                        'is_favorite': 0,
+                        'has_experience': 1
+                    }
+                    self.results['horse_data'].append(horse)
             
             return self.results
         except Exception as e:
@@ -265,6 +293,10 @@ class EnhancedPDFAnalyzer:
         converted_horses = []
         
         for horse in self.results['horse_data']:
+            # CRITICAL: Skip invalid horses
+            if not horse.get('horse_number') or horse['horse_number'] <= 0:
+                continue
+                
             # Calculate AI score based on extracted data
             ai_score = self._calculate_horse_score(horse)
             
@@ -515,14 +547,18 @@ class LONABAI:
                 
                 # Convert to AI format
                 converted_data = self.pdf_analyzer.convert_to_ai_format()
-                self.live_data = pd.DataFrame(converted_data)
-                
-                # Enhanced preview with AI scores
-                st.subheader("📋 ENHANCED HORSE DATA EXTRACTION")
-                preview_df = self.live_data[['horse_number', 'horse_name', 'trainer', 'win', 'position', 'ai_score', 'special_notes']]
-                st.dataframe(preview_df, use_container_width=True)
-                
-                return True
+                if converted_data:  # CRITICAL: Check if we have valid data
+                    self.live_data = pd.DataFrame(converted_data)
+                    
+                    # Enhanced preview with AI scores
+                    st.subheader("📋 ENHANCED HORSE DATA EXTRACTION")
+                    preview_df = self.live_data[['horse_number', 'horse_name', 'trainer', 'win', 'position', 'ai_score', 'special_notes']]
+                    st.dataframe(preview_df, use_container_width=True)
+                    
+                    return True
+                else:
+                    st.error("❌ No valid horse data could be extracted")
+                    return False
             else:
                 st.error("❌ No horse data found in document with enhanced parser")
                 return False
@@ -539,13 +575,16 @@ class LONABAI:
         data = self.live_data if self.live_data is not None else self.df
         
         try:
+            # CRITICAL: Filter out invalid horse numbers
+            valid_data = data[data['horse_number'] > 0]
+            
             return {
-                'total_horses': len(data),
-                'total_winners': data['win'].sum(),
-                'total_favorites': data['is_favorite'].sum(),
-                'avg_prize': data['prize_money'].astype(float).mean(),
-                'avg_position': data['position'].mean(),
-                'avg_ai_score': data['ai_score'].mean() if 'ai_score' in data.columns else 0
+                'total_horses': len(valid_data),
+                'total_winners': valid_data['win'].sum(),
+                'total_favorites': valid_data['is_favorite'].sum(),
+                'avg_prize': valid_data['prize_money'].astype(float).mean(),
+                'avg_position': valid_data['position'].mean(),
+                'avg_ai_score': valid_data['ai_score'].mean() if 'ai_score' in valid_data.columns else 0
             }
         except Exception as e:
             st.error(f"Analytics error: {str(e)}")
@@ -558,6 +597,13 @@ class LONABAI:
             
         try:
             df = self.live_data if self.live_data is not None else self.df
+            
+            # CRITICAL: Filter out invalid horse numbers
+            df = df[df['horse_number'] > 0]
+            
+            if len(df) < 5:
+                st.error(f"❌ Need at least 5 valid horses, but only found {len(df)}")
+                return []
             
             # Use AI score if available, otherwise calculate
             if 'ai_score' not in df.columns:
@@ -627,7 +673,9 @@ class LONABAI:
         """Generate professional text report"""
         try:
             data = self.live_data if self.live_data is not None else self.df
-            horse_data = data.to_dict('records')
+            # CRITICAL: Filter invalid horses
+            valid_data = data[data['horse_number'] > 0]
+            horse_data = valid_data.to_dict('records')
             
             race_info = {
                 'name': 'LONAB AI Prediction Analysis',
@@ -640,6 +688,25 @@ class LONABAI:
             return report_content
         except Exception as e:
             st.error(f"Report generation error: {str(e)}")
+            return None
+
+    def generate_quick_pick(self):
+        """Generate quick pick with validation"""
+        try:
+            data = self.live_data if self.live_data is not None else self.df
+            
+            # CRITICAL: Filter out invalid horse numbers
+            valid_horses = data[data['horse_number'] > 0]['horse_number'].tolist()
+            
+            if len(valid_horses) < 5:
+                st.error(f"❌ Need at least 5 valid horses, but only found {len(valid_horses)}")
+                return None
+            
+            quick_pick = random.sample(valid_horses, min(5, len(valid_horses)))
+            return quick_pick
+            
+        except Exception as e:
+            st.error(f"Quick pick generation error: {str(e)}")
             return None
 
 # ========== STREAMLIT APP ==========
@@ -765,11 +832,13 @@ def main():
         # DATA PREVIEW
         st.subheader("📋 LIVE DATA PREVIEW")
         data = ai_system.live_data if ai_system.live_data is not None else ai_system.df
-        st.dataframe(data.head(12), use_container_width=True)
+        # CRITICAL: Show only valid horses
+        valid_data = data[data['horse_number'] > 0]
+        st.dataframe(valid_data.head(12), use_container_width=True)
         
         # JOCKEY PERFORMANCE
         st.subheader("🏆 JOCKEY PERFORMANCE RANKINGS")
-        jockey_stats = data.groupby('jockey').agg({
+        jockey_stats = valid_data.groupby('jockey').agg({
             'win': 'sum',
             'position': 'mean',
             'horse_number': 'count'
@@ -867,10 +936,11 @@ def main():
             st.subheader("⚡ QUICK ACTIONS")
             
             if st.button("🎯 GENERATE QUICK PICK", use_container_width=True):
-                data = ai_system.live_data if ai_system.live_data is not None else ai_system.df
-                horses = data['horse_number'].tolist()
-                quick_pick = random.sample(horses, min(5, len(horses)))
-                st.success(f"**🎯 Quick Pick:** {', '.join(map(str, quick_pick))}")
+                quick_pick = ai_system.generate_quick_pick()
+                if quick_pick:
+                    st.success(f"**🎯 Quick Pick:** {', '.join(map(str, quick_pick))}")
+                else:
+                    st.error("❌ Cannot generate quick pick - insufficient valid horse data")
             
             if st.button("🔄 REFRESH ANALYTICS", use_container_width=True):
                 st.rerun()
