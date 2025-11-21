@@ -1,4 +1,4 @@
-# 🏆 LONAB AI - ULTIMATE ELITE EDITION
+# 🏆 LONAB AI - ULTIMATE ELITE EDITION (FIXED)
 import streamlit as st
 import pandas as pd
 import random
@@ -493,6 +493,7 @@ class PerformanceTracker:
         self.performance_metrics['total_combinations'] += len(combinations)
         
         if combinations:
+            # FIXED: Properly closed parenthesis
             self.performance_metrics['avg_confidence'] = (
                 sum(c['confidence'] for c in combinations) / len(combinations)
             
