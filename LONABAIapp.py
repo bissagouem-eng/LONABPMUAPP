@@ -1,4 +1,4 @@
-# 🏆 LONAB AI - ULTIMATE ELITE EDITION (FIXED)
+# 🏆 LONAB AI - ULTIMATE ELITE EDITION (FIXED SYNTAX)
 import streamlit as st
 import pandas as pd
 import random
@@ -287,6 +287,37 @@ class UltimatePMUParser:
         predictions.update(self.data['expert_sections'])
         return predictions
 
+# ========== PERFORMANCE TRACKER ==========
+class PerformanceTracker:
+    def __init__(self):
+        self.generation_history = []
+        self.performance_metrics = {
+            'total_combinations': 0,
+            'avg_confidence': 0,
+            'strategy_distribution': defaultdict(int),
+            'expert_horse_usage': 0
+        }
+    
+    def record_generation(self, combinations):
+        """Record generation performance"""
+        self.generation_history.extend(combinations)
+        self.performance_metrics['total_combinations'] += len(combinations)
+        
+        if combinations:
+            # FIXED: Properly closed calculation
+            total_confidence = sum(c['confidence'] for c in combinations)
+            self.performance_metrics['avg_confidence'] = total_confidence / len(combinations)
+            
+            for combo in combinations:
+                self.performance_metrics['strategy_distribution'][combo['strategy']] += 1
+                
+            expert_usage = sum(len(c['expert_horses_used']) for c in combinations) / (len(combinations) * 5)
+            self.performance_metrics['expert_horse_usage'] = expert_usage
+    
+    def get_performance_report(self):
+        """Get performance report"""
+        return self.performance_metrics
+
 # ========== ULTIMATE COMBINATION ENGINE ==========
 class UltimateCombinationEngine:
     def __init__(self, historical_data):
@@ -475,37 +506,6 @@ class UltimateCombinationEngine:
             if horse_data:
                 score += horse_data.get('priority_score', 0.5) * 20
         return score / 5
-
-# ========== PERFORMANCE TRACKER ==========
-class PerformanceTracker:
-    def __init__(self):
-        self.generation_history = []
-        self.performance_metrics = {
-            'total_combinations': 0,
-            'avg_confidence': 0,
-            'strategy_distribution': defaultdict(int),
-            'expert_horse_usage': 0
-        }
-    
-    def record_generation(self, combinations):
-        """Record generation performance"""
-        self.generation_history.extend(combinations)
-        self.performance_metrics['total_combinations'] += len(combinations)
-        
-        if combinations:
-            # FIXED: Properly closed parenthesis
-            self.performance_metrics['avg_confidence'] = (
-                sum(c['confidence'] for c in combinations) / len(combinations)
-            
-            for combo in combinations:
-                self.performance_metrics['strategy_distribution'][combo['strategy']] += 1
-                
-            expert_usage = sum(len(c['expert_horses_used']) for c in combinations) / (len(combinations) * 5)
-            self.performance_metrics['expert_horse_usage'] = expert_usage
-    
-    def get_performance_report(self):
-        """Get performance report"""
-        return self.performance_metrics
 
 # ========== LIVE ODDS INTEGRATION ==========
 class LiveOddsIntegration:
